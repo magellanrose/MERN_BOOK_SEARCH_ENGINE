@@ -1,7 +1,9 @@
 const express = require('express');
+const { ApolloServer } = require('apollo-server-express');
 const path = require('path');
 const db = require('./config/connection');
-const routes = require('./routes');
+const { typeDefs, resolvers } = require('./schemas');
+const { authMiddleware } = require('./utils/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -14,7 +16,24 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client/build')));
 }
 
-app.use(routes); // Refactor to use apollo server instead of routes
+// Create an Apollo Server instance
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+  context: ({ req, connection }) => {
+    // For HTTP requests
+    if (req) {
+      return { req, user: req.user }; // Assuming you set req.user in authMiddleware
+    }
+    // For WebSocket connections
+    if (connection) {
+      return { connection, user: connection.context.user };
+    }
+  },
+});
+
+// Apply Apollo Server middleware to Express
+server.applyMiddleware({ app });
 
 db.once('open', () => {
   app.listen(PORT, () => console.log(`🌍 Now listening on localhost:${PORT}`));
