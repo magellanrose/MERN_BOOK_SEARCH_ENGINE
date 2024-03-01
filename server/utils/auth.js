@@ -1,39 +1,48 @@
 const jwt = require('jsonwebtoken');
 
-// set token secret and expiration date
 const secret = 'mysecretsshhhhh';
 const expiration = '2h';
 
 module.exports = {
-  // function for our authenticated routes
-  authMiddleware: function (req, res, next) {
-    // allows token to be sent via  req.query or headers
-    let token = req.query.token || req.headers.authorization;
+  authMiddleware: async function ({ req, connection }, next) {
+    let token;
 
-    // ["Bearer", "<tokenvalue>"]
-    if (req.headers.authorization) {
-      token = token.split(' ').pop().trim();
+    // Check for token in HTTP headers (for HTTP requests)
+    if (req) {
+      const authorizationHeader = req.headers.authorization;
+      if (authorizationHeader) {
+        token = authorizationHeader.split(' ').pop().trim();
+      }
+    }
+
+    // Check for token in connection params (for WebSocket connections)
+    if (connection) {
+      token = connection.context.authorization;
     }
 
     if (!token) {
-      return res.status(400).json({ message: 'You have no token!' });
+      throw new Error('You have no token!');
     }
 
-    // verify token and get user data out of it
     try {
       const { data } = jwt.verify(token, secret, { maxAge: expiration });
-      req.user = data;
-    } catch {
-      console.log('Invalid token');
-      return res.status(400).json({ message: 'invalid token!' });
+      // Assuming you are using Express, you can set user data in the request context
+      if (req) {
+        req.user = data;
+      }
+      // For WebSocket connections, you may want to set data in the connection context
+      if (connection) {
+        connection.context.user = data;
+      }
+    } catch (error) {
+      console.error('Invalid token', error);
+      throw new Error('Invalid token!');
     }
 
-    // send to next endpoint
-    next();
+    return next();
   },
   signToken: function ({ username, email, _id }) {
     const payload = { username, email, _id };
-
     return jwt.sign({ data: payload }, secret, { expiresIn: expiration });
   },
 };
